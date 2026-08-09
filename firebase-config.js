@@ -1,4 +1,9 @@
-const firebaseConfig = {
+/*
+ * CSC SUITE - FIREBASE CONFIGURATION
+ * Project: cricket-c3052
+ */
+
+window.CSC_FIREBASE_CONFIG = {
     apiKey: "AIzaSyA5LBLlGP83ol2nqWFrPmDS3zYMyA5c28",
     authDomain: "cricket-c3052.firebaseapp.com",
     databaseURL: "https://cricket-c3052-default-rtdb.firebaseio.com",
