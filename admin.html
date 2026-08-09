@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CSC Suite — Firebase Admin</title>
+<script src="./firebase-config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import { getDatabase, ref, get, set, update } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+
+const cfg=window.CSC_FIREBASE_CONFIG;
+const $=id=>document.getElementById(id);
+const out=m=>$("out").textContent=typeof m==='string'?m:JSON.stringify(m,null,2);
+
+if(!cfg?.apiKey||!cfg?.authDomain||!cfg?.databaseURL||!cfg?.projectId||!cfg?.appId){
+  throw new Error('CSC Firebase configuration missing. Check firebase-config.js.');
+}
+
+let app,auth,db;
+try{
+  app=initializeApp(cfg);
+  auth=getAuth(app);
+  db=getDatabase(app);
+}catch(e){
+  console.error(e); out('Firebase initialization failed:\n'+e.message);
+}
+
+function fail(e){
+  console.error(e);
+  const code=e?.code||'';
+  const msg=String(e?.message||e||'Unknown error');
+  if(code==='auth/invalid-credential'||code==='auth/invalid-login-credentials') return out('Wrong Admin email or password.');
+  if(code==='auth/user-not-found') return out('Admin user not found. Create this email in Firebase Authentication → Users.');
+  if(code==='auth/wrong-password') return out('Wrong Admin password.');
+  if(code==='auth/operation-not-allowed') return out('Email/Password sign-in is disabled. Enable it in Firebase Authentication → Sign-in method.');
+  if(code==='auth/api-key-not-valid'||/API key not valid|API_KEY_INVALID/i.test(msg)) return out('Firebase API key rejected. Check firebase-config.js and Firebase Project Settings → Your apps.');
+  if(code==='PERMISSION_DENIED'||/permission_denied|Permission denied/i.test(msg)) return out('Realtime Database permission denied. Add admins/'+(auth?.currentUser?.uid||'YOUR_UID')+' = true and publish database rules.');
+  out(msg);
+}
+
+async function requireAdmin(){
+  const u=auth.currentUser;
+  if(!u) throw new Error('Please sign in as Admin first.');
+  const snap=await get(ref(db,'admins/'+u.uid));
+  if(snap.val()!==true) throw new Error('This Firebase UID is not an admin. Add admins/'+u.uid+' = true in Realtime Database.');
+  return u;
+}
+
+async function login(){
+  try{
+    $("login").disabled=true; out('Signing in…');
+    const email=$("adminEmail").value.trim(), pass=$("adminPass").value;
+    if(!email||!pass) throw new Error('Enter Admin email and password.');
+    await signInWithEmailAndPassword(auth,email,pass);
+    const u=await requireAdmin();
+    $("adminStatus").textContent='ADMIN: '+u.email;
+    out('Admin signed in successfully.\nUID: '+u.uid);
+  }catch(e){fail(e)}finally{$("login").disabled=false}
+}
+
+async function saveLicense(){
+  try{
+    await requireAdmin();
+    const uid=$("uid").value.trim();
+    const email=$("email").value.trim();
+    const licenseId=$("licenseId").value.trim();
+    const plan=$("plan").value;
+    const days=Number($("days").value||0);
+    if(!uid||!licenseId) throw new Error('Customer Firebase UID and License ID are required.');
+    if(plan!=='lifetime' && (!Number.isFinite(days)||days<1)) throw new Error('Enter valid license days.');
+    const expiryAt=plan==='lifetime'?0:Date.now()+days*86400000;
+    await set(ref(db,'licenses/'+uid),{
+      licenseId,email,plan,
+      days:plan==='lifetime'?0:days,
+      expiryAt,
+      status:'active',
+      activeDeviceId:null,
+      activatedAt:null,
+      createdAt:Date.now(),
+      updatedAt:Date.now()
+    });
+    out('License saved successfully.\nCustomer UID: '+uid+'\nLicense ID: '+licenseId+'\nExpiry: '+(expiryAt?new Date(expiryAt).toLocaleString('en-IN'):'Lifetime'));
+  }catch(e){fail(e)}
+}
+
+async function manage(action){
+  try{
+    await requireAdmin();
+    const uid=$("manageUid").value.trim();
+    if(!uid) throw new Error('Enter Customer UID.');
+    const r=ref(db,'licenses/'+uid);
+    if(action==='load'){
+      const s=await get(r); out(s.exists()?s.val():'No license found for this UID.'); return;
+    }
+    if(action==='reset') await update(r,{activeDeviceId:null,activatedAt:null,updatedAt:Date.now()});
+    if(action==='block') await update(r,{status:'blocked',updatedAt:Date.now()});
+    if(action==='unblock') await update(r,{status:'active',updatedAt:Date.now()});
+    out(action.toUpperCase()+' completed for '+uid);
+  }catch(e){fail(e)}
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  $("login").addEventListener('click',login);
+  $("logout").addEventListener('click',async()=>{try{await signOut(auth);out('Signed out.');$("adminStatus").textContent='Not signed in';}catch(e){fail(e)}});
+  $("save").addEventListener('click',saveLicense);
+  $("load").addEventListener('click',()=>manage('load'));
+  $("reset").addEventListener('click',()=>manage('reset'));
+  $("block").addEventListener('click',()=>manage('block'));
+  $("unblock").addEventListener('click',()=>manage('unblock'));
+  onAuthStateChanged(auth,u=>{
+    $("adminStatus").textContent=u?'SIGNED IN: '+u.email:'Not signed in';
+  });
+});
+</script>
+<style>
+*{box-sizing:border-box}body{font-family:Inter,Arial,sans-serif;background:#eef2f7;color:#172033;margin:0;padding:24px}.card{max-width:900px;margin:auto;background:#fff;padding:26px;border-radius:20px;box-shadow:0 20px 60px #0f172a18;border:1px solid #e2e8f0}h1{margin-top:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #d6deea;background:#fff;color:#172033;box-sizing:border-box}button{background:#2563eb;color:#fff;border:0;cursor:pointer;font-weight:700}button:disabled{opacity:.6;cursor:not-allowed}.danger{background:#dc2626}.green{background:#059669}.secondary{background:#475569}.muted{color:#64748b;font-size:13px}.status{padding:11px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;margin:12px 0}.out{white-space:pre-wrap;background:#0f172a;color:#dbeafe;padding:15px;border-radius:10px;margin-top:15px;min-height:80px}.note{background:#eff6ff;padding:13px;border-radius:12px;font-size:13px;line-height:1.55;border:1px solid #bfdbfe}hr{border:0;border-top:1px solid #e5e7eb;margin:22px 0}@media(max-width:650px){.grid{grid-template-columns:1fr}body{padding:12px}.card{padding:18px}}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>CSC Suite — Firebase Admin</h1>
+<div class="note"><b>Firebase Spark compatible.</b> This panel uses Firebase Authentication + Realtime Database. First create the Admin user in Authentication → Users, then add <b>admins/YOUR_ADMIN_UID = true</b> in Realtime Database.</div>
+<div class="status" id="adminStatus">Not signed in</div>
+<div class="grid"><input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username"><input id="adminPass" type="password" placeholder="Admin password" autocomplete="current-password"></div>
+<div class="grid"><button id="login">Admin Login</button><button id="logout" class="secondary">Logout</button></div>
+<hr>
+<input id="uid" placeholder="Customer Firebase UID"><input id="email" type="email" placeholder="Customer email">
+<input id="licenseId" placeholder="License ID e.g. CSC-2026-001">
+<div class="grid"><select id="plan"><option value="lifetime">Lifetime</option><option value="yearly">1 Year</option><option value="custom">Custom Days</option></select><input id="days" type="number" min="1" value="30" placeholder="Days"></div>
+<button id="save" class="green">Create / Update License</button>
+<hr>
+<input id="manageUid" placeholder="Customer UID for management">
+<div class="grid"><button id="load" class="secondary">View License</button><button id="reset" class="secondary">Reset Device</button></div>
+<div class="grid"><button id="block" class="danger">Block License</button><button id="unblock" class="green">Unblock License</button></div>
+<div id="out" class="out">Ready.</div>
+<p class="muted">Developer contact: +91 93238 838</p>
+</div>
+</body>
+</html>
