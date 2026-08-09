@@ -431,7 +431,11 @@ html[data-theme="dark"] .gate-trial-badge{color:var(--teal);}
   function grant(){gate.classList.add('d-none');document.body.style.overflow='';}
   function error(m){errText.textContent=m;errBox.classList.remove('d-none');}
   function clearError(){errBox.classList.add('d-none');}
-  function trialRemaining(){let s=localStorage.getItem(TRIAL_KEY);if(!s){s=String(Date.now());localStorage.setItem(TRIAL_KEY,s)}return Math.max(0,Math.ceil(TRIAL_DAYS-(Date.now()-Number(s))/86400000));}
+  function trialRemaining(){
+    const s=localStorage.getItem(TRIAL_KEY);
+    if(!s) return TRIAL_DAYS;
+    return Math.max(0,Math.ceil(TRIAL_DAYS-(Date.now()-Number(s))/86400000));
+  }
   function trialBadge(n){document.getElementById('cscTrialBadgeText').textContent='Free trial — '+n+' day'+(n===1?'':'s')+' left';document.getElementById('cscTrialBadge').classList.remove('d-none');}
   async function activateUser(user){
     const ref=db.ref('licenses/'+user.uid), snap=await ref.once('value');
@@ -457,8 +461,37 @@ html[data-theme="dark"] .gate-trial-badge{color:var(--teal);}
     try{const cred=await auth.signInWithEmailAndPassword(email,pass);await activateUser(cred.user)}catch(e){error(e.message||'Login failed.')}finally{document.getElementById('cscGateSubmit').disabled=false}
   }
   document.getElementById('cscGateForm').addEventListener('submit',e=>{e.preventDefault();loginAndActivate()});
-  document.getElementById('cscTrialContinueBtn').addEventListener('click',()=>{const n=trialRemaining();if(n>0){trialBadge(n);statusEl.textContent='Trial running on this browser/device.';grant()}else{document.getElementById('cscGateHeading').textContent='Trial Expired';document.getElementById('cscGateSub').textContent='Your 7-day free trial has ended. Enter your license email and password to continue.';document.getElementById('cscTrialContinueBtn').style.display='none';error('7-day free trial expired.');}});
-  const n=trialRemaining(); if(n>0){trialBadge(n);grant();} else {document.getElementById('cscGateHeading').textContent='License Required';document.getElementById('cscGateSub').textContent='Your 7-day free trial has ended. Enter your license email and password to continue.';document.getElementById('cscTrialContinueBtn').style.display='none';}
+  document.getElementById('cscTrialContinueBtn').addEventListener('click',()=>{
+    let start=localStorage.getItem(TRIAL_KEY);
+    if(!start){
+      start=String(Date.now());
+      localStorage.setItem(TRIAL_KEY,start);
+    }
+    const n=trialRemaining();
+    if(n>0){
+      trialBadge(n);
+      statusEl.textContent='Trial running on this browser/device.';
+      grant();
+    }else{
+      document.getElementById('cscGateHeading').textContent='Trial Expired';
+      document.getElementById('cscGateSub').textContent='Your 7-day free trial has ended. Enter your license email and password to continue.';
+      document.getElementById('cscTrialContinueBtn').style.display='none';
+      error('7-day free trial expired.');
+    }
+  });
+
+  // IMPORTANT: Never auto-grant access just because a trial is available.
+  // The user must explicitly click Continue Free Trial.
+  const n=trialRemaining();
+  if(n>0){
+    trialBadge(n);
+    document.getElementById('cscGateHeading').textContent='7-Day Free Trial';
+    document.getElementById('cscGateSub').textContent='Start your 7-day free trial on this browser/device, or sign in with a license account.';
+  }else{
+    document.getElementById('cscGateHeading').textContent='License Required';
+    document.getElementById('cscGateSub').textContent='Your 7-day free trial has ended. Enter your license email and password to continue.';
+    document.getElementById('cscTrialContinueBtn').style.display='none';
+  }
 })();
 </script>
 <!-- ================= /SPARK LICENSE GATE ================= -->
